@@ -1,0 +1,189 @@
+---
+title: "Fukuoka 항공권"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+
+#ctrl chift k
+
+rm(list=ls())
+library(flexdashboard)
+library(purrr)
+library(quantmod)
+library(ggplot2)
+library(lubridate)
+library(dplyr)
+library(knitr)
+library(kableExtra)
+library(RSelenium)
+library(XML)
+library(rvest)
+library(stringr)
+library(knitr)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(httr)
+library(readxl)
+library(writexl)
+library(jsonlite)
+library(DT)
+
+rD <- rsDriver(browser="firefox", port=4615L, chromever=NULL, 
+               verbose=F, check=F)
+remDr <- rD$client
+
+## Naver News Keyword Search
+naver.news.api.search <-function(keyword) {
+  
+searchUrl <- "https://openapi.naver.com/v1/search/news.xml"
+client_id <- "M4g9rW2aSU0zNVXbp0Ve"
+client_secret <- "gfr6xh20HF"
+
+search.word <- keyword
+query <- search.word %>% 
+  enc2utf8() %>% 
+  URLencode()
+
+url <- str_c(searchUrl, "?query=", query, "&display=2")
+
+res <- GET(url, 
+           add_headers("X-Naver-Client-Id"=client_id, 
+                       "X-Naver-Client-Secret"=client_secret))
+doc <- toString(res)
+
+xmlFile <- xmlParse(doc)
+xmlRoot(xmlFile)
+df <- xmlToDataFrame(getNodeSet(xmlFile, "//item"), stringsAsFactors = FALSE)
+}
+
+```
+
+
+## Column {data-width="400"}
+
+
+### Flight
+
+**네이버 항공권 조회**
+```{r, echo = FALSE}
+# 제주항공 웹사이트 접속
+remDr$navigate("https://www.jejuair.net/ko/main/base/index.do")
+
+
+# 항공권 검색
+search_box <- remDr$findElement(using = "css selector", value = "#spanDepartureDesc")
+search_box$clickElement()
+
+icn_click <- remDr$findElement(using = "css selector", value = ".choise_list .stationName")
+icn_click$clickElement()
+
+search_box2 <- remDr$findElement(using = "css selector", value = "#spanArrivalDesc")
+search_box2$clickElement()
+
+fuk_click <- remDr$findElement(using = "css selector", value = ".choise:nth-child(2) .stationName")
+fuk_click$clickElement()
+
+
+
+
+```
+
+
+
+## Column {data-width="400"}
+
+### News
+
+**특가항공권 기사 검색**
+```{r, echo = FALSE}
+
+list <- c("후쿠오카 특가", "제주항공 후쿠오카", "제주항공 일본 특가", "제주항공 특가", "일본 특가 항공")
+Stack <- NULL
+for (keyword in list) {
+  
+  query <- keyword
+  tab <- naver.news.api.search(query)
+  tab <- cbind(query, tab) 
+  tab <- tab %>% select(-originallink, -description)
+  tab <- tab %>% 
+    mutate(pubDate = str_remove(pubDate, " \\d{2}:.+")) %>% 
+    mutate(title = str_remove_all(title, "<b>|</b>|&quot;"))
+
+  Stack <- rbind(Stack, tab) 
+  
+}
+
+names(Stack) <- c("Keyword", "Title", "Link", "Date")
+
+df <- Stack %>%
+  mutate(Title = cell_spec(Title, "html", link = Link, color="#007")) %>% 
+  select(Date, Keyword, Title)
+
+df %>% 
+  kable(format="html", escape=FALSE) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed")) %>%
+  column_spec(1, width = "10em") %>%
+  column_spec(2, width = "10em") %>%
+  column_spec(3, width = "30em")
+```
+
+## Column {data-width="400"}
+
+### Vlog
+
+```{r, echo=FALSE}
+
+#유튜브 브이로그
+URL <- "https://www.youtube.com/results?search_query=%ED%9B%84%EC%BF%A0%EC%98%A4%EC%B9%B4+vlog"
+
+remDr$navigate(URL)
+
+txt <- remDr$getPageSource()[[1]]
+
+res <- read_html(txt)
+
+title <- res %>%
+  html_nodes("#video-title") %>%
+  html_text() %>% 
+  str_remove("\n") %>% 
+  str_trim()
+
+link <- res %>%
+  html_nodes("#video-title-link") %>%
+  html_attr("href") %>%
+  str_c("https://www.youtube.com", .)
+
+date <- res %>%
+  html_nodes("#metadata-line > span:nth-child(4)") %>%
+  html_text()
+
+length <- res %>%
+  html_nodes("#length") %>%
+  html_text() %>% 
+  str_trim()
+
+tbl <- cbind(date, title, length, link) %>%
+  as_tibble()
+
+df <- tbl %>%
+  mutate(title.link = str_remove_all(title, "[^[:alpha:]]")) %>% 
+  mutate(title.link = cell_spec(title, "html", link = link, color="#007")) %>%
+  select(date, title.link, length)
+
+names(df) <- c("Date", "Title", "Length")
+
+
+df %>% head(15) %>%
+  kable(format="html", escape=FALSE) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed")) 
+
+
+
+
+```
+
